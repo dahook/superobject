@@ -81,35 +81,19 @@
 {$ENDIF}
 
 {$DEFINE SUPER_METHOD}
-{.$DEFINE DEBUG} // track memory leack
+{.$DEFINE DEBUG} // track memory leak
 
-
-{$if defined(VER210) or defined(VER220)}
-  {$define VER210ORGREATER}
-{$ifend}
-
-{$if defined(VER230) or defined(VER240)  or defined(VER250) or
-     defined(VER260) or defined(VER270)  or defined(VER280)}
-  {$define VER210ORGREATER}
-  {$define VER230ORGREATER}
-{$ifend}
-
-{$if defined(FPC) or defined(VER170) or defined(VER180) or defined(VER190)
-  or defined(VER200) or defined(VER210ORGREATER)}
+{$IF DEFINED(FPC) or (CompilerVersion >= 17)}
   {$DEFINE HAVE_INLINE}
-{$ifend}
+{$ENDIF}
 
-{$if defined(VER210ORGREATER)}
-  {$define HAVE_RTTI}
-{$ifend}
+{$IF CompilerVersion >= 21}
+  {$DEFINE HAVE_RTTI}
+{$ENDIF}
 
-{$if defined(VER230ORGREATER)}
-  {$define NEED_FORMATSETTINGS}
-{$ifend}
-
-{$if defined(FPC) and defined(VER2_6)}
-  {$define NEED_FORMATSETTINGS}
-{$ifend}
+{$IF CompilerVersion >= 23}
+  {$DEFINE NEED_FORMATSETTINGS}
+{$ENDIF}
 
 {$OVERFLOWCHECKS OFF}
 {$RANGECHECKS OFF}
@@ -120,7 +104,7 @@ interface
 uses
   Classes, supertypes
 {$IFDEF HAVE_RTTI}
-  ,Generics.Collections, RTTI, TypInfo
+  ,Generics.Collections, RTTI, TypInfo, Reflection
 {$ENDIF}
   ;
 
@@ -612,7 +596,7 @@ type
     FProcessing: boolean;
     FDataType: TSuperType;
     FDataPtr: Pointer;
-{.$if true}
+{.$IF TRUE}
     FO: record
       case TSuperType of
         stBoolean: (c_boolean: boolean);
@@ -625,7 +609,7 @@ type
         stMethod: (c_method: TSuperMethod);
 {$ENDIF}
       end;
-{.$ifend}
+{.$ENDIF}
     FOString: SOString;
     function GetDataType: TSuperType;
     function GetDataPtr: Pointer;
@@ -769,16 +753,20 @@ type
 
   SOName = class(TSuperAttribute);
   SODefault = class(TSuperAttribute);
-
+  SOIgnore = class(TCustomAttribute);
 
   TSuperRttiContext = class
   private
     class function GetFieldName(r: TRttiField): string;
     class function GetFieldDefault(r: TRttiField; const obj: ISuperObject): ISuperObject;
+    class function GetPropertyDefault(r: TRttiProperty; const obj: ISuperObject): ISuperObject;
+    class function GetPropertyName(r: TRttiProperty): string;
   public
     Context: TRttiContext;
     SerialFromJson: TDictionary<PTypeInfo, TSerialFromJson>;
     SerialToJson: TDictionary<PTypeInfo, TSerialToJson>;
+    FieldsVisibility: set of TMemberVisibility;
+    PropertiesVisibility: set of TMemberVisibility;
     constructor Create; virtual;
     destructor Destroy; override;
     function FromJson(TypeInfo: PTypeInfo; const obj: ISuperObject; var Value: TValue): Boolean; virtual;
@@ -886,7 +874,7 @@ const
   TOK_TRUE: PSOChar = 'true';
   TOK_FALSE: PSOChar = 'false';
 
-{$if (sizeof(Char) = 1)}
+{$IF (SIZEOF(Char) = 1)}
 function StrLComp(const Str1, Str2: PSOChar; MaxLen: Cardinal): Integer;
 var
   P1, P2: PWideChar;
@@ -949,18 +937,18 @@ begin
     Result := (p - Str);
   end;
 end;
-{$ifend}
+{$ENDIF}
 
 function FloatToJson(const value: Double): SOString;
 var
   p: PSOChar;
 begin
   Result := FloatToStr(value);
-  if {$if defined(NEED_FORMATSETTINGS)}FormatSettings.{$ifend}DecimalSeparator <> '.' then
+  if {$IF DEFINED(NEED_FORMATSETTINGS)}FormatSettings.{$ENDIF}DecimalSeparator <> '.' then
   begin
     p := PSOChar(Result);
     while p^ <> #0 do
-      if p^ <> SOChar({$if defined(NEED_FORMATSETTINGS)}FormatSettings.{$ifend}DecimalSeparator) then
+      if p^ <> SOChar({$IF DEFINED(NEED_FORMATSETTINGS)}FormatSettings.{$ENDIF}DecimalSeparator) then
       inc(p) else
       begin
         p^ := '.';
@@ -974,11 +962,11 @@ var
   p: PSOChar;
 begin
   Result := CurrToStr(value);
-  if {$if defined(NEED_FORMATSETTINGS)}FormatSettings.{$ifend}DecimalSeparator <> '.' then
+  if {$IF DEFINED(NEED_FORMATSETTINGS)}FormatSettings.{$ENDIF}DecimalSeparator <> '.' then
   begin
     p := PSOChar(Result);
     while p^ <> #0 do
-      if p^ <> SOChar({$if defined(NEED_FORMATSETTINGS)}FormatSettings.{$ifend}DecimalSeparator) then
+      if p^ <> SOChar({$IF DEFINED(NEED_FORMATSETTINGS)}FormatSettings.{$ENDIF}DecimalSeparator) then
       inc(p) else
       begin
         p^ := '.';
@@ -1059,10 +1047,10 @@ begin
         if TVarRec(Args[j]).VPointer = nil then
           Add(nil) else
           Add(TSuperObject.Create(PtrInt(TVarRec(Args[j]).VPointer)));
-{$if declared(vtUnicodeString)}
+{$IF DECLARED(vtUnicodeString)}
       vtUnicodeString:
           Add(TSuperObject.Create(SOString(string(TVarRec(Args[j]).VUnicodeString))));
-{$ifend}
+{$ENDIF}
     else
       assert(false);
     end;
@@ -1100,13 +1088,13 @@ begin
     varLongWord: Result := TSuperObject.Create(VLongWord);
     varInt64:    Result := TSuperObject.Create(VInt64);
     varString:   Result := TSuperObject.Create(SOString(AnsiString(VString)));
-{$if declared(varUString)}
+{$IF DECLARED(varUString)}
   {$IFDEF FPC}
     varUString:  Result := TSuperObject.Create(SOString(UnicodeString(VString)));
   {$ELSE}
     varUString:  Result := TSuperObject.Create(SOString(string(VUString)));
   {$ENDIF}
-{$ifend}
+{$ENDIF}
   else
     raise Exception.CreateFmt('Unsuported variant data type: %d', [VType]);
   end;
@@ -5878,6 +5866,8 @@ begin
   SerialToJson.Add(TypeInfo(Boolean), serialtoboolean);
   SerialToJson.Add(TypeInfo(TDateTime), serialtodatetime);
   SerialToJson.Add(TypeInfo(TGUID), serialtoguid);
+  FieldsVisibility := [mvPrivate, mvProtected, mvPublic, mvPublished];
+  PropertiesVisibility := [];
 end;
 
 destructor TSuperRttiContext.Destroy;
@@ -6079,6 +6069,7 @@ function TSuperRttiContext.FromJson(TypeInfo: PTypeInfo; const obj: ISuperObject
   procedure FromClass;
   var
     f: TRttiField;
+    p: TRttiProperty;
     v: TValue;
   begin
     case ObjectGetType(obj) of
@@ -6087,15 +6078,28 @@ function TSuperRttiContext.FromJson(TypeInfo: PTypeInfo; const obj: ISuperObject
           Result := True;
           if Value.Kind <> tkClass then
             Value := GetTypeData(TypeInfo).ClassType.Create;
-          for f in Context.GetType(Value.AsObject.ClassType).GetFields do
-            if f.FieldType <> nil then
-            begin
-              v := TValue.Empty;
-              Result := FromJson(f.FieldType.Handle, GetFieldDefault(f, obj.AsObject[GetFieldName(f)]), v);
-              if Result then
-                f.SetValue(Value.AsObject, v) else
-                Exit;
-            end;
+          if FieldsVisibility <> [] then
+            for f in Context.GetType(Value.AsObject.ClassType).GetFields do
+              if (f.FieldType <> nil) and (f.Visibility in FieldsVisibility)
+              and (f.GetCustomAttribute<SOIgnore> = nil) then
+              begin
+                v := TValue.Empty;
+                Result := FromJson(f.FieldType.Handle, GetFieldDefault(f, obj.AsObject[GetFieldName(f)]), v);
+                if Result then
+                  f.SetValue(Value.AsObject, v) else
+                  Exit;
+              end;
+          if PropertiesVisibility <> [] then
+            for p in Context.GetType(Value.AsObject.ClassType).GetProperties do
+              if (p.PropertyType <> nil) and (p.Visibility in PropertiesVisibility)
+              and (p.GetCustomAttribute<SOIgnore> = nil) then
+              begin
+                v := TValue.Empty;
+                Result := FromJson(p.PropertyType.Handle, GetPropertyDefault(p, obj.AsObject[GetPropertyName(p)]), v);
+                if Result then
+                  p.SetValue(Value.AsObject, v) else
+                  Exit;
+              end;
         end;
       stNull:
         begin
@@ -6368,6 +6372,27 @@ begin
     Result := False;
 end;
 
+class function TSuperRttiContext.GetPropertyDefault(r: TRttiProperty; const obj: ISuperObject): ISuperObject;
+var
+  o: TCustomAttribute;
+begin
+  if not ObjectIsType(obj, stNull) then Exit(obj);
+  for o in r.GetAttributes do
+    if o is SODefault then
+      Exit(SO(SODefault(o).Name));
+  Result := obj;
+end;
+
+class function TSuperRttiContext.GetPropertyName(r: TRttiProperty): string;
+var
+  o: TCustomAttribute;
+begin
+  for o in r.GetAttributes do
+    if o is SOName then
+      Exit(SOName(o).Name);
+  Result := r.Name;
+end;
+
 function TSuperRttiContext.ToJson(var value: TValue; const index: ISuperObject): ISuperObject;
   procedure ToInt64;
   begin
@@ -6403,6 +6428,7 @@ function TSuperRttiContext.ToJson(var value: TValue; const index: ISuperObject):
   procedure ToClass;
   var
     o: ISuperObject;
+    p: TRttiProperty;
     f: TRttiField;
     v: TValue;
   begin
@@ -6413,12 +6439,26 @@ function TSuperRttiContext.ToJson(var value: TValue; const index: ISuperObject):
       begin
         Result := TSuperObject.Create(stObject);
         index[IntToStr(NativeInt(Value.AsObject))] := Result;
-        for f in Context.GetType(Value.AsObject.ClassType).GetFields do
-          if f.FieldType <> nil then
-          begin
-            v := f.GetValue(Value.AsObject);
-            Result.AsObject[GetFieldName(f)] := ToJson(v, index);
-          end
+        if FieldsVisibility <> [] then
+        begin
+          for f in Context.GetType(Value.AsObject.ClassType).GetFields do
+            if (f.FieldType <> nil) and (f.Visibility in FieldsVisibility)
+            and (f.GetCustomAttribute<SOIgnore> = nil) then
+            begin
+              v := f.GetValue(Value.AsObject);
+              Result.AsObject[GetFieldName(f)] := ToJson(v, index);
+            end
+        end;
+        if PropertiesVisibility <> [] then
+        begin
+          for p in Context.GetType(Value.AsObject.ClassType).GetProperties do
+            if (p.PropertyType <> nil) and (p.Visibility in PropertiesVisibility)
+            and (p.GetCustomAttribute<SOIgnore> = nil) then
+            begin
+              v := p.GetValue(Value.AsObject);
+              Result.AsObject[GetPropertyName(p)] := ToJson(v, index);
+            end
+        end;
       end else
         Result := o;
     end else
